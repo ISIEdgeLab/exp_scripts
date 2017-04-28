@@ -104,7 +104,7 @@ class ClickConfig(object):
 		break
         self.tf.close()
         
-        self.ifs =[]
+        self.ifs = {}
         self.data = {}
         self.gws = []
         self.routes = {}
@@ -112,7 +112,6 @@ class ClickConfig(object):
     def parse_routing(self):
         (output, error) = Popen(["ip", "route"], stdout = PIPE, stderr = PIPE).communicate()
         out = output.splitlines()
-        self.spots = []
         
         c = 1
         for line in out:
@@ -122,22 +121,33 @@ class ClickConfig(object):
                 (tokens[0] != '192.168.0.0/22' and tokens[0] != '172.16.0.0/12' and
                  tokens[0] != '192.168.0.0/16' and tokens[0] != '224.0.0.0/4')):
                 ifnum = int(tokens[2].split('.')[1])
-                self.ifs.append(tokens[4])
-                self.data['if%d' % ifnum] = tokens[4]
-                self.data['if%d_16' % ifnum] = tokens[0]
-                self.data['if%d_gw' % ifnum] = tokens[2]
-	        self.spots.append(ifnum)
+                if ifnum == 100:
+                    ifnum = int(tokens[2].split('.')[2])
+                    self.ifs[tokens[4]] = "o%d" % ifnum
+                    self.data['ifo%d' % ifnum] = tokens[4]
+                    self.data['ifo%d_16' % ifnum] = tokens[0]
+                    self.data['ifo%d_gw' % ifnum] = tokens[2]
+                else:
+                    self.ifs[tokens[4]] = "%d" % ifnum
+                    self.data['if%d' % ifnum] = tokens[4]
+                    self.data['if%d_16' % ifnum] = tokens[0]
+                    self.data['if%d_gw' % ifnum] = tokens[2]
             elif (tokens[1] == "dev" and tokens[2] not in self.ifs and
                   (tokens[0] != '192.168.0.0/22' and tokens[0] != '172.16.0.0/12' and
                    tokens[0] != '192.168.0.0/16' and tokens[0] != '224.0.0.0/4')):
                 ifnum = int(tokens[0].split('.')[1])
-                self.ifs.append(tokens[2])
-                self.data['if%d' % ifnum] = tokens[2]
-                self.data['if%d_16' % ifnum] = tokens[0]
-                self.data['if%d_gw' % ifnum] = ''
-                self.spots.append(ifnum)
+                if ifnum == 100:
+                    ifnum = int(tokens[0].split('.')[2])
+                    self.ifs[tokens[2]] = "o%d" % ifnum
+                    self.data['ifo%d' % ifnum] = tokens[2]
+                    self.data['ifo%d_16' % ifnum] = tokens[0]
+                    self.data['ifo%d_gw' % ifnum] = ''
+                else:
+                    self.ifs[tokens[2]] = "%d" % ifnum
+                    self.data['if%d' % ifnum] = tokens[2]
+                    self.data['if%d_16' % ifnum] = tokens[0]
+                    self.data['if%d_gw' % ifnum] = ''
 
-        #print self.data
     def process_arp(self):
         (output, error) = Popen(["arp", "-a"], stdout = PIPE, stderr = PIPE).communicate()
 	
@@ -146,10 +156,9 @@ class ClickConfig(object):
             tokens = line.strip("\n").split()
             if len(tokens) == 7 and tokens[0] != '?':
                 if tokens[-1] in self.ifs:
-                    self.data['if%d_friend' % (self.spots[self.ifs.index(tokens[-1])])] = tokens[3]
+                    self.data['if%s_friend' % self.ifs[tokens[-1]]]  = tokens[3]
                     
         
-
     def generate_route_str(self):
         route_str = ""
         dev_null = open('/dev/null', 'w')
@@ -181,7 +190,9 @@ class ClickConfig(object):
 if __name__ == "__main__":
     from sys import argv
     if '-d' in argv or '-v' in argv:
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(filename='/tmp/click_config.log', level=logging.DEBUG)
+    else:
+        logging.basicConfig(filename='/tmp/click_config.log', level=logging.WARN)
 
     uc = ClickConfig()
     uc.updateConfig()
