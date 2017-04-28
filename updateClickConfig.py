@@ -14,18 +14,17 @@ except Exception as e:
 (output, error) = subprocess.Popen(["ip", "route"], stdout = subprocess.PIPE, stderr = subprocess.PIPE).communicate()
 
 out = output.splitlines()
-ifs = []
-if_16s = []
-if_gws = []
+data = {}
+c = 1
 for line in out:
     tokens = line.strip("\n").split()
     if len(tokens) == 7 and tokens[1] == "via":
-        ifs.append(tokens[4])
-        if_16s.append(tokens[0])
-        if_gws.append(tokens[2])
+        data['if%d' % c] = tokens[4]
+        data['if%d_16' % c] = tokens[0]
+        data['if%d_gw' % c] = tokens[2]
+        c = c + 1
 
-
-config = template.substitute(if1 = ifs[0], if2 = ifs[1], if3 = ifs[2], if1_16 = if_16s[0], if2_16 = if_16s[1], if3_16 = if_16s[2], if1_gw = if_gws[0], if2_gw = if_gws[1], if3_gw = if_gws[2])
+config = template.substitute(**data)
 
 fh = open(out_file, "w")
 fh.write(config)
