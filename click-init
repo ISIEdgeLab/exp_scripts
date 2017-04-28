@@ -1,0 +1,63 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:          click
+# Required-Start:    $syslog $time $networking
+# Required-Stop:     $syslog $time $networking
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Multiple Routers in a box
+# Description:       Run full network emulation on a single machine.
+### END INIT INFO
+#
+# Author:	Geoff Lawler <glawler@tislabs.com>
+#
+
+PATH=/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin
+NAME=click
+DAEMON=/usr/local/bin/${NAME}
+PIDFILE=/var/run/${NAME}.pid
+LOGFILE=/var/log/${NAME}.log
+CONFFILE=/etc/click/vrouter.click
+DARGS="--dpdk -c 0xffffff -n 4 -- -u /click $CONFFILE"
+
+test -x $DAEMON || exit 0
+
+. /lib/lsb/init-functions
+
+case "$1" in
+  start)
+    test -e $CONFFILE || (log_failure_msg "$CONFFILE does not exist." && exit 1)
+    log_daemon_msg "Starting routers" "${NAME}"
+    if start-stop-daemon --start --quiet --make-pidfile --background --pidfile $PIDFILE --exec $DAEMON -- $DARGS; then
+        log_end_msg 0
+    else
+        log_end_msg 1
+    fi
+    ;;
+  stop)
+    log_daemon_msg "Stopping routers" "${NAME}"
+    if start-stop-daemon --stop --quiet --oknodo --pidfile $PIDFILE; then
+        log_end_msg 0
+    else
+        log_end_msg 1
+    fi
+    ;;
+  restart)
+    log_daemon_msg "Restarting routers" "${NAME}"
+    start-stop-daemon --stop --quiet --oknodo --retry 30 --pidfile $PIDFILE
+    if start-stop-daemon --start --quiet --make-pidfile --background --pidfile $PIDFILE --exec $DAEMON -- $DARGS; then
+        log_end_msg 0
+    else
+        log_end_msg 1
+    fi
+    ;;
+  status)
+    status_of_proc -p $PIDFILE $DAEMON $NAME && exit 0 || exit $?
+    ;;
+  *)
+    log_action_msg "Usage: ${0} {start|stop|restart|status}"
+    exit 1
+    ;;
+esac
+
+exit 0
