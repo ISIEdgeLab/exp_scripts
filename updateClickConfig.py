@@ -83,6 +83,41 @@ class OneHopNeighbors(object):
         log.debug('local addresses: {}'.format(local_addrs))
         return (local_addrs, local_nets)
 
+class RouteUpdate(object):
+    def __init__(self):
+        (output, error) = Popen(["ip", "route"], stdout = PIPE, stderr = PIPE).communicate()
+        out = output.splitlines()
+
+        self.lines_to_remove = []
+        self.ifaces = []
+
+        for line in out:
+            tokens = line.strip("\n").split()
+            if (len(tokens) >= 5 and tokens[1] == "via" and
+                tokens[0] != 'default' and
+                (tokens[0] != '192.168.0.0/22' and tokens[0] != '172.16.0.0/12' and
+                 tokens[0] != '192.168.0.0/16' and tokens[0] != '224.0.0.0/4')):
+                self.lines_to_remove.append(line)
+            else:
+                if (tokens[0] != 'default' and
+                    (tokens[0] != '192.168.0.0/22' and tokens[0] != '172.16.0.0/12' and
+                     tokens[0] != '192.168.0.0/16' and tokens[0] != '224.0.0.0/4')):
+                    self.ifaces.append(tokens[2])
+
+    def updateRoutes(self):
+        for line in self.lines_to_remove:
+            route_to_rem = 'sudo ip route del %s' % line
+            check_call(route_to_rem.split(), stdout = PIPE, stderr = PIPE)
+
+        for iface in self.ifaces:
+            addrs = ni.ifaddresses(iface)
+            ip = na.IPAddress(addrs[ni.AF_INET][0]['addr'])
+            net = na.IPNetwork('%s/255.255.0.0' % ip)
+            route_to_add = 'sudo ip route add %s via %s dev %s' % (net.cidr, (ip - 1), iface)
+            check_call(route_to_add.split(),  stdout = PIPE, stderr = PIPE)
+
+
+    
 class ClickConfig(object):
     def __init__(self):
         self.template_file = "/tmp/vrouter.template"
@@ -173,7 +208,7 @@ class ClickConfig(object):
         self.data['routing'] = route_str
                 
     def write_config(self):
-        time.sleep(10)
+	time.sleep(10)
         config = self.template.substitute(self.data)
         fh = open(self.out_file, "w")
         fh.write(config)
@@ -194,6 +229,8 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(filename='/tmp/click_config.log', level=logging.WARN)
 
+    ru = RouteUpdate()
+    ru.updateRoutes()
     uc = ClickConfig()
     uc.updateConfig()
 
