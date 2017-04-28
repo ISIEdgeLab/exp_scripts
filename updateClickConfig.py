@@ -25,15 +25,18 @@ out = output.splitlines()
 data = {}
 gws = []
 ifs = []
+spots = []
 c = 1
 for line in out:
     tokens = line.strip("\n").split()
     if len(tokens) == 7 and tokens[1] == "via":
-        data['if%d' % c] = tokens[4]
-        data['if%d_16' % c] = tokens[0]
-        data['if%d_gw' % c] = tokens[2]
+	ifnum = int(tokens[6])
+        data['if%d' % ifnum] = tokens[4]
+        data['if%d_16' % ifnum] = tokens[0]
+        data['if%d_gw' % ifnum] = tokens[2]
         gws.append(tokens[2]) 
         ifs.append(tokens[4])
+	spots.append(ifnum)
         c = c + 1
 
 if arpless:
@@ -49,7 +52,7 @@ if arpless:
         tokens = line.strip("\n").split()
         if len(tokens) == 7 and tokens[0] != '?':
             if tokens[-1] in ifs:
-                data['if%d_friend' % (ifs.index(tokens[-1]) + 1)] = tokens[3]	
+                data['if%d_friend' % (spots[ifs.index(tokens[-1])])] = tokens[3]	
 
 config = template.substitute(**data)
 
