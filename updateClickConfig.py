@@ -1,61 +1,189 @@
 #!/bin/python
-import sys
-import subprocess
+import sys, time
+import logging
+import netaddr as na
+import netifaces as ni
+
+from subprocess import Popen, PIPE, check_call, CalledProcessError, STDOUT
+import re
 from string import Template
+from os import devnull
 
-template_file = "/tmp/vrouter.template"
-out_file = "/tmp/vrouter.click"
+log = logging.getLogger(__name__)
 
-try:
-    template = Template(open(template_file).read())
-    tf = open(template_file, "r")
-except Exception as e:
-    sys.exit(1)
+class OneHopNeighbors(object):
+    def __init__(self):
+        super(OneHopNeighbors, self).__init__()
+        Popen(["apt-get", "install", "traceroute", "-y"], stdout = PIPE, stderr = PIPE).communicate()
+        self.hosts = self._get_hosts('/etc/hosts')
 
-arpless = False
-for line in tf:
-	if "friend" in line:
-		arpless = True
-		break
-tf.close()
+    def _get_hosts(self, path):
+        ''' read local /etc/hosts file and return an {ip: hostname, ...} dict of the info found there.'''
+        ret = {}
+        with open(path, 'r') as fd:
+            for line in fd:
+                line = line.strip('\n')
+                # 10.0.1.3    xander-landos xander-0 xander
+                m = re.match('([\d\.]+)\s+([^ ]+)', line)
+                if m:
+                    ret[m.group(1)] = m.group(2)
 
-(output, error) = subprocess.Popen(["ip", "route"], stdout = subprocess.PIPE, stderr = subprocess.PIPE).communicate()
+        return ret
 
-out = output.splitlines()
-data = {}
-gws = []
-ifs = []
-spots = []
-c = 1
-for line in out:
-    tokens = line.strip("\n").split()
-    if len(tokens) == 7 and tokens[1] == "via":
-	ifnum = int(tokens[6])
-        data['if%d' % ifnum] = tokens[4]
-        data['if%d_16' % ifnum] = tokens[0]
-        data['if%d_gw' % ifnum] = tokens[2]
-        gws.append(tokens[2]) 
-        ifs.append(tokens[4])
-	spots.append(ifnum)
-        c = c + 1
-
-if arpless:
-    dev_null = open('/dev/null', 'w')
-    for gw in gws:
-        cmd = 'ping -c 1 %s' % gw
-        subprocess.Popen(cmd.split(), stdout=dev_null)
+    def get_neighbors(self):
+        (local_addrs, local_nets) = self.get_local_addresses()
+        if not local_addrs:
+            log.warn('Unable to get local addresses - cannot continue.')
+            return None
         
-    (output, error) = subprocess.Popen(["arp", "-a"], stdout = subprocess.PIPE, stderr = subprocess.PIPE).communicate()
+        DEVNULL = open(devnull, 'w')
+        one_hop_nbrs = {}
+        for addr, host in self.hosts.iteritems():
+            log.debug('comp: {} <--> {}'.format(addr, local_addrs.keys()))
+            if addr not in local_addrs.values():
+                ip = na.IPAddress(addr)
+                for host, network in local_nets.iteritems():
+                    if ip in network:
+                        cmd = 'ping -c 1 {}'.format(addr)
+                        try: 
+                            check_call(cmd.split(' '), stdout=DEVNULL, stderr=STDOUT)
+                        except (OSError, ValueError) as e:
+                            log.warn('Unable to run "{}": {}'.format(cmd, e))
+                            continue
+                        except CalledProcessError as e:
+                            log.info('{} ({}) does not appear to be one hop neighbor.'.format(host, addr))
+                            continue
+
+                # so at this point, it looks like this host entry is a one hop 
+                # neighbor. Add it to the list.
+                one_hop_nbrs[host] = addr
+
+        return one_hop_nbrs
+
+    def get_local_addresses(self):
+        try:
+            o, _ = Popen(['ifconfig'], stdout=PIPE).communicate()
+        except (OSError, ValueError) as e:
+            log.critical('Unable to read interface information via ifconfig: {}'.format(e))
+            return False
+        
+        local_addrs = {'localhost': '127.0.0.1'}
+        local_nets = {}
+        for line in o.split('\n'):
+            # inet addr:10.0.6.2  Bcast:10.0.6.255  Mask:255.255.255.0
+            m = re.search('addr:([\d\.]+)\s+Bcast:([\d\.]+)\s+Mask:([\d\.]+)', line)
+            if m:
+                if m.group(1) in self.hosts.keys():
+                    local_addrs[self.hosts[m.group(1)]] = m.group(1)
+                    local_nets[self.hosts[m.group(1)]] = na.IPNetwork("%s/%s" % (m.group(1), m.group(3)))
+                else:
+                    log.warn('Found unnamed address in local interfaces (probably control '
+                             'net): {}'.format(m.group(1)))
+
+        log.debug('local addresses: {}'.format(local_addrs))
+        return (local_addrs, local_nets)
+
+class ClickConfig(object):
+    def __init__(self):
+        self.template_file = "/tmp/vrouter.template"
+        self.out_file = "/tmp/vrouter.click"
+        self.nbrs = OneHopNeighbors()
+        self.nbrs.get_neighbors()
+
+        try:
+            self.template = Template(open(self.template_file).read())
+            self.tf = open(self.template_file, "r")
+        except Exception as e:
+            sys.stderr.write("Cannot find template file\n")
+            sys.exit(1)
+
+        self.arpless = False
+        for line in self.tf:
+	    if "friend" in line:
+		self.arpless = True
+		break
+        self.tf.close()
+        
+        self.ifs =[]
+        self.data = {}
+        self.gws = []
+        self.routes = {}
+                
+    def parse_routing(self):
+        (output, error) = Popen(["ip", "route"], stdout = PIPE, stderr = PIPE).communicate()
+        out = output.splitlines()
+        self.spots = []
+        
+        c = 1
+        for line in out:
+            tokens = line.strip("\n").split()
+            if (len(tokens) >= 5 and tokens[1] == "via" and
+                tokens[0] != 'default' and
+                (tokens[0] != '192.168.0.0/22' and tokens[0] != '172.16.0.0/12' and
+                 tokens[0] != '192.168.0.0/16' and tokens[0] != '224.0.0.0/4')):
+                ifnum = int(tokens[2].split('.')[1])
+                self.ifs.append(tokens[4])
+                self.data['if%d' % ifnum] = tokens[4]
+                self.data['if%d_16' % ifnum] = tokens[0]
+                self.data['if%d_gw' % ifnum] = tokens[2]
+	        self.spots.append(ifnum)
+            elif (tokens[1] == "dev" and tokens[2] not in self.ifs and
+                  (tokens[0] != '192.168.0.0/22' and tokens[0] != '172.16.0.0/12' and
+                   tokens[0] != '192.168.0.0/16' and tokens[0] != '224.0.0.0/4')):
+                ifnum = int(tokens[0].split('.')[1])
+                self.ifs.append(tokens[2])
+                self.data['if%d' % ifnum] = tokens[2]
+                self.data['if%d_16' % ifnum] = tokens[0]
+                self.data['if%d_gw' % ifnum] = ''
+                self.spots.append(ifnum)
+
+        #print self.data
+    def process_arp(self):
+        (output, error) = Popen(["arp", "-a"], stdout = PIPE, stderr = PIPE).communicate()
 	
-    out = output.splitlines()
-    for line in out:
-        tokens = line.strip("\n").split()
-        if len(tokens) == 7 and tokens[0] != '?':
-            if tokens[-1] in ifs:
-                data['if%d_friend' % (spots[ifs.index(tokens[-1])])] = tokens[3]	
+        out = output.splitlines()
+        for line in out:
+            tokens = line.strip("\n").split()
+            if len(tokens) == 7 and tokens[0] != '?':
+                if tokens[-1] in self.ifs:
+                    self.data['if%d_friend' % (self.spots[self.ifs.index(tokens[-1])])] = tokens[3]
+                    
+        
 
-config = template.substitute(**data)
+    def generate_route_str(self):
+        route_str = ""
+        dev_null = open('/dev/null', 'w')
+        for ip, route in self.routes.iteritems():
+            if route['gw'] != "":
+                route_str = "%s,\n\t\t\t %s %s %d" % (route_str, ip, route['gw'],
+                                              self.ifs.index(route['if']))
+    
+            else:
+                route_str = "%s,\n\t\t\t %s %d" % (route_str, ip,
+                                                   self.ifs.index(route['if']))
+        self.data['routing'] = route_str
+                
+    def write_config(self):
+        time.sleep(10)
+        config = self.template.substitute(self.data)
+        fh = open(self.out_file, "w")
+        fh.write(config)
+        fh.close()
 
-fh = open(out_file, "w")
-fh.write(config)
-fh.close()
+    def updateConfig(self):
+        self.parse_routing()
+        #self.generate_route_str()
+        if self.arpless:
+            self.process_arp()
+        self.write_config()
+
+
+if __name__ == "__main__":
+    from sys import argv
+    if '-d' in argv or '-v' in argv:
+        logging.basicConfig(level=logging.DEBUG)
+
+    uc = ClickConfig()
+    uc.updateConfig()
+
+
