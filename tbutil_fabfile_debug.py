@@ -84,9 +84,9 @@ def kill_magi():
         except FabricException:
             show_err(msg)
 
-def start_magi():
+def start_magi(mdir='/proj/edgect/magi/current'):
     msg = 'Installing and starting Magi on {}'.format(env.host_string)
-    mdir = '/proj/edgect/magi/current'
+    #mdir = '/proj/edgect/magi/current'
     with settings(warn_only=True):
         try:
             run('sudo {}/magi_bootstrap.py -p {}'.format(mdir, mdir))
