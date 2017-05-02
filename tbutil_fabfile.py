@@ -90,7 +90,8 @@ def start_magi(mdir='/proj/edgect/magi/current'):
     #mdir = '/proj/edgect/magi/current'
     with settings(warn_only=True, abort_exception=FabricException), quiet():
         try:
-            run('sudo {}/magi_bootstrap.py -p {}'.format(mdir, mdir))
+            run('sudo {}/magi_bootstrap.py -fp {}'.format(mdir, mdir))
+#            run('sudo {}/magi_bootstrap.py -fUNp {}'.format(mdir, mdir))
             show_ok(msg)
         except FabricException:
             show_err(msg)
