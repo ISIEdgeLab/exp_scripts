@@ -85,6 +85,28 @@ def kill_magi():
         except FabricException:
             show_err(msg)
 
+def magi_log_to_space(old="/var/log/", new="/space/var/log/", conf="/var/log/magi/config/experiment.conf"):
+    msg = 'Changing MAGI\'s default log dir of {} to {}'.format(old,new)
+    # XXX Hack
+    if '/space' in new:
+        if not exists('/space'):
+            show_err('\'/space/\' not set up.')
+            return
+    try:
+        run('sudo mkdir -p {}'.format(new))
+    except FabricException:
+        show_err(msg)
+    if exists(new):
+        if exists(conf):
+            try:
+                file_find_replace(file=conf, old_text=old, new_text=new)
+            except FabricException:
+                show_err(msg)
+        else:
+            show_err('Conf file {} does not exist.'.format(conf))
+    else:
+        show_err('New log directory does not exist.')
+
 def start_magi(mdir='/proj/edgect/magi/current'):
     msg = 'Installing and starting Magi on {}'.format(env.host_string)
     #mdir = '/proj/edgect/magi/current'
