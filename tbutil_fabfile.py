@@ -139,3 +139,15 @@ def start_click():
                 show_ok(msg)
             except FabricException:
                 show_err(msg)
+
+def file_find_replace(file='/tmp/none', old_text='', new_text=''):
+    if exists(file):
+        msg = 'Replacing {} with {} on {}'.format(old_text, new_text, file)
+        with settings(warn_only=True, abort_exception=FabricException), quiet():
+            try:
+                cmd="sudo sed 's/{}/{}/g' {} > {}.orig".format(old_text, new_text, file, file)
+                run(cmd)
+                run("mv {}.orig {}".format(file,file))
+                show_ok(msg)
+            except FabricException:
+                show_err(msg)
