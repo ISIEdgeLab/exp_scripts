@@ -13,9 +13,11 @@ fi
 
 # We only have a few extra args in addition to the reset args, if we don't recognize an arg, we'll assume it goes
 # to reset_magi
-while getopts :e:h opt; do
+while getopts :e:v:h opt; do
 	case $opt in
 	e) PIDEID=$OPTARG
+	    ;;
+	v) MAGI_VERSION=$OPTARG
 	    ;;
         *)
             ;;
@@ -35,9 +37,18 @@ if [[ -z ${PID} ]]; then
     exit 2
 fi
 
+# Do this first in case we're moving to a different magi version.
+#${SCRIPTDIR}/${RESET} $@
+
+MAGI_DIR=/proj/edgect/magi/${MAGI_VERSION}
+
+if [[ ! -d ${MAGI_DIR} ]]; then
+    echo Error determining location of magi version \(${MAGI_VERSION}\) specified.
+    echo -e "\t${MAGI_DIR} does not exist."
+    exit 2
+fi            
+
 fab -f ${SCRIPTDIR}/${FABFILE} \
     --pool-size=${POOLSIZE} \
     initenv:pid=${PID},eid=${EID} \
-    magi_log_to_space
-
-${SCRIPTDIR}/${RESET} $@
+    magi_log_to_space:mdir=${MAGI_DIR}

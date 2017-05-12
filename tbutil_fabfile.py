@@ -80,12 +80,12 @@ def kill_magi():
     with settings(warn_only=True, abort_exception=FabricException), quiet():
         try:
             run('sudo killall mongos mongod magi_daemon.py')
-            run('sudo rm -rf /var/log/magi/db /usr/local/lib/python*/dist-packages/magi /tmp/MAGI* /tmp/magi*')
+            run('sudo rm -rf /var/log/magi/db /space/var/log/magi/db /usr/local/lib/python*/dist-packages/magi /tmp/MAGI* /tmp/magi*')
             show_ok(msg)
         except FabricException:
             show_err(msg)
 
-def magi_log_to_space(old="/var/log/", new="/space/var/log/", conf="/var/log/magi/config/experiment.conf"):
+def magi_log_to_space(old="/var/log/", new="/space/var/log/", conf="/var/log/magi/config/experiment.conf", mdir='/proj/edgect/magi/current'):
     msg = 'Changing MAGI\'s default log dir of {} to {}'.format(old,new)
     # XXX Hack
     if '/space' in new:
@@ -99,7 +99,12 @@ def magi_log_to_space(old="/var/log/", new="/space/var/log/", conf="/var/log/mag
     if exists(new):
         if exists(conf):
             try:
+                kill_magi()
+                start_magi(mdir=mdir)
                 file_find_replace(file=conf, old_text=old, new_text=new)
+                run('sudo cp {} /tmp/experiment-custom.conf'.format(conf))
+                kill_magi()
+                start_magi(mdir=mdir, expconf='/tmp/experiment-custom.conf')
             except FabricException:
                 show_err(msg)
         else:
@@ -107,13 +112,15 @@ def magi_log_to_space(old="/var/log/", new="/space/var/log/", conf="/var/log/mag
     else:
         show_err('New log directory does not exist.')
 
-def start_magi(mdir='/proj/edgect/magi/current'):
+def start_magi(mdir='/proj/edgect/magi/current', expconf=None):
     msg = 'Installing and starting Magi on {}'.format(env.host_string)
-    #mdir = '/proj/edgect/magi/current'
     with settings(warn_only=True, abort_exception=FabricException), quiet():
         try:
-            run('sudo {}/magi_bootstrap.py -fp {}'.format(mdir, mdir))
-#            run('sudo {}/magi_bootstrap.py -fUNp {}'.format(mdir, mdir))
+            if expconf != None:
+                expconf_arg = ' --expconf {}'.format(expconf)
+            else:
+                expconf_arg =''
+            run('sudo {}/magi_bootstrap.py {} -fp {}'.format(mdir, expconf_arg, mdir))
             show_ok(msg)
         except FabricException:
             show_err(msg)
@@ -165,11 +172,11 @@ def start_click():
 def file_find_replace(file='/tmp/none', old_text='', new_text=''):
     if exists(file):
         msg = 'Replacing {} with {} on {}'.format(old_text, new_text, file)
-        with settings(warn_only=True, abort_exception=FabricException), quiet():
+        with settings(warn_only=True, debug=True, abort_exception=FabricException):
             try:
-                cmd="sudo sed 's/{}/{}/g' {} > {}.orig".format(old_text, new_text, file, file)
+                cmd="sudo sed 's/{}/{}/g' {} > /tmp/`basename {}`.new".format(old_text.replace('/', '\\/'), new_text.replace('/', '\\/'), file, file)
                 run(cmd)
-                run("mv {}.orig {}".format(file,file))
+                run("sudo cp /tmp/`basename {}`.new {}".format(file,file))
                 show_ok(msg)
             except FabricException:
                 show_err(msg)
