@@ -79,7 +79,7 @@ def kill_magi():
     msg = 'Killing and uninstalling Magi on {}'.format(env.host_string)
     with settings(warn_only=True, abort_exception=FabricException), quiet():
         try:
-            run('sudo killall mongos mongod magi_daemon.py')
+            run('sudo killall mongos mongod magi_daemon.py magi_orchestrator.py')
             run('sudo rm -rf /var/log/magi/db /space/var/log/magi/db /usr/local/lib/python*/dist-packages/magi /tmp/MAGI* /tmp/magi*')
             show_ok(msg)
         except FabricException:
