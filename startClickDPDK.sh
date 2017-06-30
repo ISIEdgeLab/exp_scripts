@@ -5,6 +5,7 @@ if [ "$1" == "" ]; then
 	exit -1
 fi
 
+sudo apt-get update
 sudo apt-get install python-netaddr python-netifaces -y;
 
 cp /proj/edgect/templates/$1/vrouter.template /tmp
