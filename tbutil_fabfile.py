@@ -153,7 +153,11 @@ def kill_click():
         msg = 'Killing click on {}'.format(env.host_string)
         with settings(warn_only=True, abort_exception=FabricException), quiet():
             try:
-                run('sudo click-uninstall')
+                if exists('/tmp/ifconfig.json'):
+                    run('sudo pkill -f dpdk')
+                else:
+                    run('sudo click-uninstall')
+
                 show_ok(msg)
             except FabricException:
                 show_err(msg)
@@ -164,7 +168,11 @@ def start_click():
         msg = 'Starting click on {}'.format(env.host_string)
         with settings(warn_only=True, abort_exception=FabricException), quiet():
             try:
-                run('sudo click-install {}'.format(f))
+                if exists('/tmp/ifconfig.json'):
+                    run('sudo rm /click')
+                    run('sudo nohup click --dpdk -c 0xffffff -n 4 -- -u /click /tmp/vrouter.click >/tmp/click.log 2>&1 < /dev/null &')
+                else:
+                    run('sudo click-install {}'.format(f))
                 show_ok(msg)
             except FabricException:
                 show_err(msg)
