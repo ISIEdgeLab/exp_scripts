@@ -139,9 +139,9 @@ class ClickConfig(object):
         self.arpless = False
         self.useDPDK = False
         for line in self.tf:
-	    if "friend" in line:
-		self.arpless = True
-	    if "$DPDKDeparture" in line:
+            if "friend" in line:
+                self.arpless = True
+            if "$DPDKDeparture" in line:
                 self.useDPDK = True
         self.tf.close()
         
@@ -249,7 +249,7 @@ class ClickConfig(object):
 
     def process_arp(self):
         (output, error) = Popen(["arp", "-a"], stdout = PIPE, stderr = PIPE).communicate()
-	
+        
         out = output.splitlines()
         for line in out:
             tokens = line.strip("\n").split()
@@ -273,7 +273,7 @@ class ClickConfig(object):
                 
     def write_config(self):
         if not self.useDPDK:
-	    time.sleep(10)
+            time.sleep(10)
         config = self.template.substitute(self.data)
         fh = open(self.out_file, "w")
         fh.write(config)
