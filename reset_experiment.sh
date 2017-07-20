@@ -28,8 +28,8 @@ while getopts :e:z:v:h opt; do
            echo
            echo Individual modules can be reset using this script as well. If given on the command line
            echo only those modules will be reset and not the whole scenario. Supported modules are
-           echo "magi", "deterdash", and "click". If no module is specified, all will be reset. If 
-           echo any are specified, only those will be reset, e.g. "$(basename $0) magi click" will 
+           echo \"magi\", \"deterdash\", and \"click\". If no module is specified, all will be reset. If 
+           echo any are specified, only those will be reset, e.g. \"$(basename $0) magi click\" will 
            echo restart magi and click, but not deterdash. 
            echo
            exit 1
