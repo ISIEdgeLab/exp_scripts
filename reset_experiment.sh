@@ -60,7 +60,7 @@ fi
 
 # default is to restart everything. Individual things can be set on the command line though.
 kills="kill_magi kill_deterdash kill_click"
-starts="start_magi start_deterdash start_click"
+starts="start_click start_magi:mdir=${MAGI_DIR} start_deterdash"
 if [[ $# -ne 0 ]]; then
     kills=
     starts=
