@@ -37,6 +37,8 @@ while getopts :e:z:v:h opt; do
    esac
 done
 
+shift "$((OPTIND - 1))"
+
 PID=$(echo ${PIDEID} | cut -d, -f1)
 EID=$(echo ${PIDEID} | cut -d, -f2)
 
