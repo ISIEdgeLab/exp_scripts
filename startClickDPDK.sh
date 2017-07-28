@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 
+# Bash and Dash compatible.
+
 TEMPLATE_DIR=/proj/edgect/templates/
 
 if test $# -eq 0; then
 	echo "ERROR: Not enough arguments given."
-	$0 -h
+	"$0" -h
 	exit 1
 fi
 
 TEMPLATE_GIVEN=false
+ARGS="$@"
 
 while test $# -gt 0; do
 	case "$1" in
@@ -33,7 +36,7 @@ while test $# -gt 0; do
 		*)
 			if $TEMPLATE_GIVEN; then
 				echo "ERROR: Given multiple templates?"
-				$0 -h
+				"$0" -h
 				exit 1
 			fi
 			TEMPLATE_GIVEN=true
@@ -65,14 +68,36 @@ fi
 
 echo "INFO: Given template $TEMPLATE and dir $TEMPLATE_DIR"
 
-sudo apt-get update
-sudo apt-get install python-netaddr python-netifaces -y;
+# If we weren't given permission, we're taking it anyway! 
+# BAD!, but hey, our script is a special snowflake.
+# (Check if we're running with the right privs, and if not, try running ourselves again with perms.)
+# (Do dash compliant $EUID check)
+if [ `id -u`  -ne 0 ]; then
+	echo "INFO: Rerunning script with sudo privs."
+	exec sudo "$0" "$ARGS"
+fi
+
+apt-get update
+apt-get install python-netaddr python-netifaces -y;
 
 cp $TEMPLATE_DIR/$TEMPLATE/vrouter.template /tmp
 python /proj/edgect/exp_scripts/updateClickConfig.py
 
-# kill possibily lingering instances.
-sudo pkill click &> /dev/null
-sudo rm -f /click &> /dev/null
+# Kill possibly lingering instances. 
+# If we end up killing click, we need to wait for clean up or we can't start a new click.
+# (e.g. without the pause, starting click will fail and we can't run this script back-to-back)
+KILL_COUNT=`pkill --euid 0 -c click`
+if [ $KILL_COUNT -gt 0 ]; then
+	echo "INFO: Killed $KILL_COUNT click processes"
+	# Hack - surely a better way:
+	sleep 5
+fi
+rm -f /click
 
-sudo click --dpdk -c 0xffffff -n 4 -- -u /click /tmp/vrouter.click &
+click --dpdk -c 0xffffff -n 4 -- -u /click /tmp/vrouter.click >/tmp/click.log 2>1 < /dev/null &
+
+
+
+
+
+
