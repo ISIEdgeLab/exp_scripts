@@ -169,11 +169,12 @@ def start_click():
         with settings(warn_only=True, abort_exception=FabricException), quiet():
             try:
                 if exists('/tmp/ifconfig.json'):
-                    run('sudo rm /click')
+                    show_ok('Starting DPDK click on {}'.format(env.host_string))
+                    run('sudo rm /click /tmp/click.log')
                     run('sudo nohup click --dpdk -c 0xffffff -n 4 -- -u /click /tmp/vrouter.click >/tmp/click.log 2>&1 < /dev/null &')
                 else:
+                    show_ok('Starting kernel click on {}'.format(env.host_string))
                     run('sudo click-install {}'.format(f))
-                show_ok(msg)
             except FabricException:
                 show_err(msg)
 
