@@ -5,6 +5,9 @@ if [ "$1" == "" ]; then
 	exit -1
 fi
 
-cp /proj/edgect/templates/$1/enclave.routes /tmp
-python /proj/edgect/exp_scripts/updateRoutes.py
+DIR=$1
+shift 1
+
+cp /proj/edgect/templates/$DIR/enclave.routes /tmp
+sudo python /proj/edgect/exp_scripts/updateRoutes.py $@
 

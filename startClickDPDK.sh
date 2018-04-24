@@ -3,6 +3,7 @@
 # Bash and Dash compatible.
 
 TEMPLATE_DIR=/proj/edgect/templates/
+BURST=0
 
 if test $# -eq 0; then
 	echo "ERROR: Not enough arguments given."
@@ -21,6 +22,8 @@ while test $# -gt 0; do
 			echo -e "\t-h, --help\tProduce this help message and exit."
 			echo -e "\t-p, --path\tLook for Click  templates in this directory."
 			echo -e "\t\t\tWithout this option, script will search for templates in ${TEMPLATE_DIR}"
+			echo -e "\t-b, --burst\tProvide a burst parameter to DPDK."
+			echo -e "\t\t\tAllows controlling number of packets to send to the NIC."
 			exit 0
 			;;
 		-p|--path)
@@ -29,6 +32,16 @@ while test $# -gt 0; do
 				TEMPLATE_DIR=$1
 			else
 				echo "ERROR: No path given to -p|--path option"
+				exit 1
+			fi
+			shift
+			;;
+		-b|--burst)
+			shift
+			if test $# -gt 0; then
+				BURST=$1
+			else
+				echo "ERROR: No burst value provided"
 				exit 1
 			fi
 			shift
@@ -52,12 +65,12 @@ if ! $TEMPLATE_GIVEN; then
 fi
 
 if [ ! -d "$TEMPLATE_DIR" ]; then
-	echo "ERROR: No such directory: $TEMPLATE_DIR"
+	echo "ERROR: No such directory: \"$TEMPLATE_DIR\""
 	exit 1
 fi
 
 if [ ! -d "$TEMPLATE_DIR/$TEMPLATE" ]; then
-	echo "ERROR: No such template directory found: $TEMPLATE_DIR/$TEMPLATE"
+	echo "ERROR: No such template directory found: \"$TEMPLATE_DIR/$TEMPLATE\""
 	exit 1
 fi
 
@@ -74,14 +87,15 @@ echo "INFO: Given template $TEMPLATE and dir $TEMPLATE_DIR"
 # (Do dash compliant $EUID check)
 if [ `id -u`  -ne 0 ]; then
 	echo "INFO: Rerunning script with sudo privs."
-	exec sudo "$0" "$ARGS"
+	echo "sudo $0 $ARGS"
+	exec sudo "$0" $ARGS
 fi
 
 apt-get update
 apt-get install python-netaddr python-netifaces -y;
 
 cp $TEMPLATE_DIR/$TEMPLATE/vrouter.template /tmp
-python /proj/edgect/exp_scripts/updateClickConfig.py
+python /proj/edgect/exp_scripts/updateClickConfig.py --burst $BURST
 
 # Kill possibly lingering instances. 
 # If we end up killing click, we need to wait for clean up or we can't start a new click.
@@ -94,7 +108,7 @@ if [ $KILL_COUNT -gt 0 ]; then
 fi
 rm -f /click
 
-click --dpdk -c 0xffffff -n 4 -- -u /click /tmp/vrouter.click >/tmp/click.log 2>1 < /dev/null &
+click --dpdk -c 0xffffff -n 4 -- -u /click /tmp/vrouter.click >/tmp/click.log 2>&1 < /dev/null &
 
 
 

@@ -4,6 +4,7 @@ import logging, os
 import netaddr as na
 import netifaces as ni
 import json
+import argparse
 
 from subprocess import Popen, PIPE, check_call, CalledProcessError, STDOUT
 import re
@@ -116,12 +117,13 @@ class RouteUpdate(object):
             ip = na.IPAddress(addrs[ni.AF_INET][0]['addr'])
             net = na.IPNetwork('%s/255.255.0.0' % ip)
             route_to_add = 'sudo ip route add %s via %s dev %s' % (net.cidr, (ip - 1), iface)
+            print route_to_add
             check_call(route_to_add.split(),  stdout = PIPE, stderr = PIPE)
 
 
     
 class ClickConfig(object):
-    def __init__(self):
+    def __init__(self, args):
         self.template_file = "/tmp/vrouter.template"
         self.out_file = "/tmp/vrouter.click"
         self.input_file = "/tmp/ifconfig.json"
@@ -129,6 +131,8 @@ class ClickConfig(object):
         self.nbrs = OneHopNeighbors()
         self.nbrs.get_neighbors()
 
+        self.args = args
+        
         try:
             self.template = Template(open(self.template_file).read())
             self.tf = open(self.template_file, "r")
@@ -139,9 +143,9 @@ class ClickConfig(object):
         self.arpless = False
         self.useDPDK = False
         for line in self.tf:
-            if "friend" in line:
-                self.arpless = True
-            if "$DPDKDeparture" in line:
+	    if "friend" in line:
+		self.arpless = True
+	    if "$DPDKDeparture" in line:
                 self.useDPDK = True
         self.tf.close()
         
@@ -193,7 +197,11 @@ class ClickConfig(object):
                 DPDKArrStr = self.data.get('DPDKArrival', "")
                 DPDKDetStr = self.data.get('DPDKDeparture', "")
                 DPDKArrStr = "%s\nFromDPDKDevice(%d) -> VLANDecap() -> vlanmux;" % (DPDKArrStr, info['port'])
-                DPDKDetStr = "%s\noutDPDK%d :: ToDPDKDevice(%d);" % (DPDKDetStr, info['port'], info['port'])
+                if self.args.burst != 0:
+                    DPDKDetStr = "%s\noutDPDK%d :: ToDPDKDevice(%d, BURST %d);" % (DPDKDetStr, info['port'], info['port'], self.args.burst)
+                else:
+                    DPDKDetStr = "%s\noutDPDK%d :: ToDPDKDevice(%d);" % (DPDKDetStr, info['port'], info['port'])
+                    
                 self.data['DPDKArrival'] = DPDKArrStr
                 self.data['DPDKDeparture'] = DPDKDetStr
             else:
@@ -249,7 +257,7 @@ class ClickConfig(object):
 
     def process_arp(self):
         (output, error) = Popen(["arp", "-a"], stdout = PIPE, stderr = PIPE).communicate()
-        
+	
         out = output.splitlines()
         for line in out:
             tokens = line.strip("\n").split()
@@ -273,7 +281,7 @@ class ClickConfig(object):
                 
     def write_config(self):
         if not self.useDPDK:
-            time.sleep(10)
+	    time.sleep(10)
         config = self.template.substitute(self.data)
         fh = open(self.out_file, "w")
         fh.write(config)
@@ -292,15 +300,20 @@ class ClickConfig(object):
 
 
 if __name__ == "__main__":
-    from sys import argv
-    if '-d' in argv or '-v' in argv:
+    parser = argparse.ArgumentParser(description='Update a click template with local state to correctly configure click.')
+    parser.add_argument('-d', dest='debug', help='Enable debug statements')
+    parser.add_argument('-v', dest='verbose', help='Enable verbose output (same as debug atm)')
+    parser.add_argument('--burst', dest='burst', default=0, type=int, help='Set the output burst parameter for DPDK links')
+    args = parser.parse_args()
+    
+    if args.debug or args.verbose:
         logging.basicConfig(filename='/tmp/click_config.log', level=logging.DEBUG)
     else:
         logging.basicConfig(filename='/tmp/click_config.log', level=logging.WARN)
 
     ru = RouteUpdate()
     ru.updateRoutes()
-    uc = ClickConfig()
+    uc = ClickConfig(args)
     uc.updateConfig()
 
 
